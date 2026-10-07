@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ask AI</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+:root{--bg:#f8fafc;--card:#fff;--text:#0f172a;--muted:#64748b;--accent:#4f46e5;--bubble:#e2e8f0;--line:#e2e8f0;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b1020;--card:#151b2e;--text:#e5e7eb;--muted:#94a3b8;--accent:#818cf8;--bubble:#243049;--line:#243049}}
+:root[data-theme="dark"]{--bg:#0b1020;--card:#151b2e;--text:#e5e7eb;--muted:#94a3b8;--accent:#818cf8;--bubble:#243049;--line:#243049}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
+.card{background:var(--card);border:1px solid var(--line)}
+.btn{background:var(--accent);color:#fff}
+.me{background:var(--accent);color:#fff;align-self:flex-end}
+.ai{background:var(--bubble);align-self:flex-start}
+#msgs{display:flex;flex-direction:column;gap:8px;overflow-y:auto}
+</style>
+</head>
+<body>
+<main class="max-w-2xl mx-auto px-6 py-16 text-center">
+  <h1 class="text-4xl font-bold mb-4">Welcome 👋</h1>
+  <p style="color:var(--muted)" class="text-lg mb-8">Have a question? Tap the chat button in the corner and text our AI assistant. It replies in seconds.</p>
+  <button onclick="toggle(true)" class="btn rounded-full px-6 py-3 font-semibold">Start chatting</button>
+</main>
+
+<button id="fab" onclick="toggle()" aria-label="Open chat" class="btn fixed rounded-full shadow-lg text-2xl" style="right:20px;bottom:calc(20px + env(safe-area-inset-bottom,0px));width:56px;height:56px">💬</button>
+
+<section id="panel" class="card hidden fixed rounded-2xl shadow-2xl flex-col" style="right:16px;bottom:calc(90px + env(safe-area-inset-bottom,0px));width:min(380px,calc(100% - 32px));height:min(520px,70%)">
+  <header class="px-4 py-3 font-semibold flex justify-between" style="border-bottom:1px solid var(--line)">
+    <span>AI Assistant</span><button onclick="toggle(false)" aria-label="Close">✕</button>
+  </header>
+  <div id="msgs" class="flex-1 p-4"></div>
+  <div id="err" class="px-4 text-sm hidden" style="color:#ef4444"></div>
+  <div class="p-3 flex gap-2" style="border-top:1px solid var(--line)">
+    <input id="inp" placeholder="Type your question…" class="flex-1 rounded-full px-4 py-2 outline-none" style="background:var(--bg);color:var(--text);border:1px solid var(--line)">
+    <button id="send" onclick="send()" class="btn rounded-full px-4 font-semibold">Send</button>
+  </div>
+</section>
+
+<script>
+const SYSTEM="You are a friendly, concise website assistant. Answer the visitor's question clearly in a few sentences.";
+const ENDPOINT=""; // Your backend URL. It receives {messages:[{role,content}]} and returns {reply:"..."}
+let history=[],sample=null,busy=false;
+const $=id=>document.getElementById(id);
+(async()=>{try{sample=await claude.use("sample")}catch(e){sample=null}})();
+
+function toggle(open){
+  const p=$("panel");
+  const show=open===undefined?p.classList.contains("hidden"):open;
+  p.classList.toggle("hidden",!show);p.classList.toggle("flex",show);
+  if(show){if(!history.length)add("ai","Hi! Ask me anything.");$("inp").focus()}
+}
+function add(who,text){
+  const d=document.createElement("div");
+  d.className=who+" rounded-2xl px-3 py-2 max-w-[85%] whitespace-pre-wrap";
+  d.textContent=text;$("msgs").appendChild(d);$("msgs").scrollTop=1e9;return d;
+}
+async function send(){
+  const t=$("inp").value.trim();
+  if(!t||busy)return;
+  $("err").classList.add("hidden");
+  $("inp").value="";add("me",t);history.push({role:"user",content:t});
+  const bubble=add("ai","Thinking…");busy=true;$("send").disabled=true;
+  try{
+    const turns=[{role:"user",content:SYSTEM+"\n\nConversation starts now."},{role:"assistant",content:"Understood."},...history];
+    let r;
+    if(ENDPOINT){
+      const res=await fetch(ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:SYSTEM,messages:history})});
+      if(!res.ok)throw new Error("bad response");
+      r={text:(await res.json()).reply};
+    }else if(sample){
+      r=await sample(turns,{cache:false,onText:({text})=>{bubble.textContent=text;$("msgs").scrollTop=1e9}});
+    }else throw new Error("no backend");
+    bubble.textContent=r.text;history.push({role:"assistant",content:r.text});
+  }catch(e){
+    bubble.remove();history.pop();
+    $("err").textContent=e&&e.code==="rate_limited"?"Too many messages, try again shortly.":"Something went wrong. Please try again.";
+    $("err").classList.remove("hidden");
+  }
+  busy=false;$("send").disabled=false;
+}
+$("inp").addEventListener("keydown",e=>{if(e.key==="Enter")send()});
+</script>
+</body>
+</html>
